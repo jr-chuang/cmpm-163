@@ -113,27 +113,27 @@ function postload() {
   let skygeo = new THREE.CubeGeometry( 1000, 1000, 1000 );
   let skyTex = [];
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_lf.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_lf.JPG' ),
     side: THREE.BackSide
   }));
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_rt.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_rt.JPG' ),
     side: THREE.BackSide
   }));
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_up.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_up.JPG' ),
     side: THREE.BackSide
   }));
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_dn.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_dn.JPG' ),
     side: THREE.BackSide
   }));
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_ft.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_ft.JPG' ),
     side: THREE.BackSide
   }));
   skyTex.push( new THREE.MeshBasicMaterial({
-    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_bk.jpg' ),
+    map: new THREE.TextureLoader().load( './resources/sor_lake1/lake1_bk.JPG' ),
     side: THREE.BackSide
   }));
 
