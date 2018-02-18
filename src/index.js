@@ -1,7 +1,8 @@
 
-import * as THREE from 'three';
+// import * as THREE from 'three';
 import { EffectComposer, RenderPass } from "postprocessing";
 import * as STATE from './state.js';
+import Proton from 'three.proton.js';
 
 import dat from 'dat.gui';
 
@@ -13,9 +14,11 @@ import ENTITIES from './entities.js';
 
 const VSHADER_NOISE = `
 varying vec2 coord;
+uniform float time;
+
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  coord = vec2(position.x, position.z)*25.0;
+  coord = vec2(position.x + time*1.5, position.z + time)*25.0;
 }
 `;
 
@@ -157,15 +160,43 @@ function postload() {
 
   let cloudgeo = new THREE.CubeGeometry( 24, 1, 32 );
   STATE.cloudx = 0;
-  STATE.cloudy = 0;
+  STATE.cloudy = 15;
   STATE.cloudz = 0;
   let cloudmat = new THREE.ShaderMaterial({
+    uniforms: { time: { type: "f", value: 0.0 } },
     vertexShader: VSHADER_NOISE,
     fragmentShader: FSHADER_NOISE
   });
   cloudmat.transparent = true;
   STATE.meshes.cloud = new THREE.Mesh( cloudgeo, cloudmat );
   STATE.scene.add(STATE.meshes.cloud);
+
+  // Rain
+
+  STATE.proton = new Proton();
+
+  let emitter = new Proton.Emitter();
+  emitter.rate = new Proton.Rate(new Proton.Span(0, 12), new Proton.Span(.05, .1));
+  emitter.addInitialize(new Proton.Mass(2));
+  emitter.addInitialize(new Proton.Radius(new Proton.Span(1, 2)));
+  STATE.spawn = new Proton.BoxZone(0, 0, 0, 24, 8, 32);
+  emitter.addInitialize(new Proton.Position(STATE.spawn));
+  emitter.addInitialize(new Proton.Life(5, 10));
+  let raintex = new THREE.TextureLoader().load('./resources/rain.png');
+  let rainmat = new THREE.SpriteMaterial({
+    map: raintex,
+    color: 0xffffff,
+    fog: true
+  });
+  emitter.addInitialize(new Proton.Body(new THREE.Sprite(rainmat)));
+
+  emitter.addBehaviour(new Proton.RandomDrift(2, 1, 2, .05));
+  emitter.addBehaviour(new Proton.Gravity(2.5));
+
+  emitter.emit();
+
+  STATE.proton.addEmitter(emitter);
+  STATE.proton.addRender(new Proton.SpriteRender(STATE.scene));
 
   // Renderer
 
@@ -217,10 +248,18 @@ function update(deltaTime) {
   STATE.meshes.heightmap.rotation.set(0, elapsedTime*0, 0);
   STATE.meshes.skybox.rotation.set(0, elapsedTime*0, 0);
   STATE.meshes.cloud.position.set(-STATE.cloudx, STATE.cloudy, STATE.cloudz);
+  STATE.meshes.cloud.material.uniforms['time'].value = elapsedTime;
   STATE.meshes.ocean.rotation.set(-Math.PI*0.5, 0, elapsedTime*0);
   STATE.meshes.buildings.rotation.set(-Math.PI*0.5, 0, elapsedTime*0);
 
+
+  STATE.spawn.x = -STATE.cloudx;
+  STATE.spawn.y = STATE.cloudy - 5;
+  STATE.spawn.z = STATE.cloudz;
+
   STATE.reflection.update( STATE.renderer, STATE.scene );
+
+  STATE.proton.update();
 
   ENTITIES.update(deltaTime);
   STATE.keyboard.update( deltaTime );
@@ -245,7 +284,7 @@ function onKeyUp(evt) {
 function onWindowResize() {
 	STATE.camera.aspect = window.innerWidth / window.innerHeight;
 	STATE.camera.updateProjectionMatrix();
-	renderer.setSize( window.innerWidth, window.innerHeight );
+	STATE.renderer.setSize( window.innerWidth, window.innerHeight );
 }
 
 STATE.loader.finishedLoading = postload;
