@@ -3,55 +3,67 @@ import * as THREE from 'three';
 import { EffectComposer, RenderPass } from "postprocessing";
 import * as STATE from './state.js';
 
-import ENTITIES from './entities.js';
+import dat from 'dat.gui';
 
-import AssignmentPass from './AssignmentPass.js';
+let OrbitControls = require('three-orbit-controls')(THREE);
+
+import ENTITIES from './entities.js';
 
 // shaders
 
-const VSHADER_GEO = `
-varying float ypos;
-uniform float time;
-void main() {
-  float vx = sin(time*4323.43 + position.y) - 0.5;
-  float vy = cos(time*2132.53 + position.y) - 0.5;
-  float vz = cos(time*1295.27 + position.y) - 0.5;
-  vec3 newpos = vec3(position.x + vx*0.5, position.y + vy*0.5, position.z + vz*0.5);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(newpos, 1.0);
-  ypos = position.z;
-}
-`;
-
-const FSHADER_GEO = `
-varying float ypos;
-void main() {
-  float col = sin(ypos);
-  gl_FragColor = vec4(col, col, col, 1.0);
-}
-`;
-
-const VSHADER_RAND = `
-varying float rand;
+const VSHADER_NOISE = `
+varying vec2 coord;
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  rand = gl_Position.y;
+  coord = vec2(position.x, position.z)*25.0;
 }
 `;
 
-const FSHADER_RAND = `
-varying float rand;
+const FSHADER_NOISE = `
+varying vec2 coord;
+
+float rand(vec2 c){
+	return fract(sin(dot(c.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+float noise(vec2 p, float freq ){
+	float unit = 256.0/freq;
+	vec2 ij = floor(p/unit);
+	vec2 xy = mod(p,unit)/unit;
+	//xy = 3.*xy*xy-2.*xy*xy*xy;
+	xy = .5*(1.-cos(3.14159265*xy));
+	float a = rand((ij+vec2(0.,0.)));
+	float b = rand((ij+vec2(1.,0.)));
+	float c = rand((ij+vec2(0.,1.)));
+	float d = rand((ij+vec2(1.,1.)));
+	float x1 = mix(a, b, xy.x);
+	float x2 = mix(c, d, xy.x);
+	return mix(x1, x2, xy.y);
+}
+
+float pNoise(vec2 p, int res){
+	float persistance = .5;
+	float n = 0.;
+	float normK = 0.;
+	float f = 4.;
+	float amp = 1.;
+	int iCount = 0;
+	for (int i = 0; i<50; i++){
+		n+=amp*noise(p, f);
+		f*=2.;
+		normK+=amp;
+		amp*=persistance;
+		if (iCount == res) break;
+		iCount++;
+	}
+	float nf = n/normK;
+	return nf*nf*nf*nf;
+}
+
 void main() {
-  float r = sin(rand*4323.43);
-  float g = cos(rand*2132.53);
-  float b = cos(rand*1295.27);
-  gl_FragColor = vec4(r, g, b, 1.0);
+  float alpha = clamp(pNoise(coord, 64)*10.0, 0.0, 0.9);
+  gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
 }
-`;
-
-const VSHADER_PHONG = `
-`;
-
-const FSHADER_PHONG = `
 `;
 
 function init() {
@@ -63,6 +75,7 @@ function init() {
 
   STATE.camera = new THREE.PerspectiveCamera( 80, window.innerWidth / window.innerHeight, 1, 2000 );
   STATE.camera.position.set( 0, 0, 50 );
+  STATE.controls = new OrbitControls( STATE.camera );
 
   STATE.clock = new THREE.Clock(false);
 
@@ -80,41 +93,79 @@ function postload() {
 
   // Lights
 
-  STATE.entities.light1 = new THREE.PointLight(0xFF1111, 4, 0, 1);
+  STATE.entities.light0 = new THREE.DirectionalLight( 0xA0A0A0 );
+  STATE.entities.light0.position.set( 0.5, 0.5, 0.5 );
+  STATE.scene.add( STATE.entities.light0 );
+
+  STATE.entities.light1 = new THREE.AmbientLight( 0xA0A0A0 );
   STATE.scene.add( STATE.entities.light1 );
-
-  STATE.entities.light2 = new THREE.PointLight(0x11FF11, 4, 0, 1);
-  STATE.scene.add( STATE.entities.light2 );
-
-  STATE.entities.light3 = new THREE.PointLight(0x1111FF, 4, 0, 1);
-  STATE.scene.add( STATE.entities.light3 );
 
   // Objects
 
-  STATE.scene.add(STATE.meshes.astronaut);
+  STATE.scene.add(STATE.meshes.heightmap);
+  STATE.scene.add(STATE.meshes.buildings);
 
-  let mat2 = new THREE.ShaderMaterial({
-    vertexShader: VSHADER_RAND,
-    fragmentShader: FSHADER_RAND
+  // Skybox
+
+  let skygeo = new THREE.CubeGeometry( 1000, 1000, 1000 );
+  let skyTex = [];
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_lf.jpg' ),
+    side: THREE.BackSide
+  }));
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_rt.jpg' ),
+    side: THREE.BackSide
+  }));
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_up.jpg' ),
+    side: THREE.BackSide
+  }));
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_dn.jpg' ),
+    side: THREE.BackSide
+  }));
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_ft.jpg' ),
+    side: THREE.BackSide
+  }));
+  skyTex.push( new THREE.MeshBasicMaterial({
+    map: THREE.ImageUtils.loadTexture( 'resources/sor_lake1/lake1_bk.jpg' ),
+    side: THREE.BackSide
+  }));
+
+  let skymat = new THREE.MeshFaceMaterial( skyTex );
+  STATE.meshes.skybox = new THREE.Mesh( skygeo, skymat );
+  STATE.scene.add(STATE.meshes.skybox);
+
+  // "Ocean"
+
+  STATE.reflection = new THREE.CubeCamera( 1, 5000, 512 );
+  STATE.reflection.position.set(0, -10, 0);
+  STATE.scene.add( STATE.reflection );
+
+  let oceangeo = new THREE.PlaneBufferGeometry( 100, 100, 8 );
+  let oceanmat = new THREE.MeshLambertMaterial({ color: 0xffffff, envMap: STATE.reflection.renderTarget });
+  STATE.meshes.ocean = new THREE.Mesh( oceangeo, oceanmat );
+
+  STATE.height = -13;
+
+  STATE.meshes.ocean.position.set(0, STATE.height, 0);
+  STATE.scene.add(STATE.meshes.ocean);
+
+  // Clouds
+
+  let cloudgeo = new THREE.CubeGeometry( 24, 1, 32 );
+  STATE.cloudx = 0;
+  STATE.cloudy = 0;
+  STATE.cloudz = 0;
+  let cloudmat = new THREE.ShaderMaterial({
+    vertexShader: VSHADER_NOISE,
+    fragmentShader: FSHADER_NOISE
   });
-  for (let i = 0; i < STATE.meshes.donuts.children[0].children.length; i++) {
-    STATE.meshes.donuts.children[0].children[i].material = mat2;
-  }
-  STATE.scene.add(STATE.meshes.donuts);
-  console.log(STATE.meshes.donuts);
-
-  STATE.uniforms.sphere = {
-    time: { value: STATE.clock.elapsedTime }
-  };
-
-  let geo1 = new THREE.SphereBufferGeometry( 8, 16, 16 );
-  let mat1 = new THREE.ShaderMaterial({
-    uniforms: STATE.uniforms.sphere,
-    vertexShader:   VSHADER_GEO,
-    fragmentShader: FSHADER_GEO
-  });
-  STATE.meshes.planet = new THREE.Mesh(geo1, mat1);
-  STATE.scene.add(STATE.meshes.planet);
+  cloudmat.transparent = true;
+  STATE.meshes.cloud = new THREE.Mesh( cloudgeo, cloudmat );
+  STATE.scene.add(STATE.meshes.cloud);
 
   // Renderer
 
@@ -125,15 +176,17 @@ function postload() {
   STATE.composer = new EffectComposer(STATE.renderer);
 
   STATE.passes.renderPass = new RenderPass(STATE.scene, STATE.camera);
-  STATE.passes.renderPass.renderToScreen = false;
-  STATE.passes.assignmentPass = new AssignmentPass();
-  STATE.passes.assignmentPass.renderToScreen = true;
-
+  STATE.passes.renderPass.renderToScreen = true;
   STATE.composer.addPass(STATE.passes.renderPass);
-  STATE.composer.addPass(STATE.passes.assignmentPass);
 
   let container = document.getElementById('app');
   container.appendChild( STATE.renderer.domElement );
+
+  let gui = new dat.GUI();
+  gui.add(STATE, 'height', -25, -5);
+  gui.add(STATE, 'cloudx', -25, 25);
+  gui.add(STATE, 'cloudy', -5, 25);
+  gui.add(STATE, 'cloudz', -25, 25);
 
   // Controllers
 
@@ -160,25 +213,18 @@ function loop() {
 function update(deltaTime) {
 
   const elapsedTime = STATE.clock.elapsedTime;
-  STATE.uniforms.sphere.time.value = elapsedTime;
+  STATE.meshes.ocean.position.set(0, STATE.height, 0);
+  STATE.meshes.heightmap.rotation.set(0, elapsedTime*0, 0);
+  STATE.meshes.skybox.rotation.set(0, elapsedTime*0, 0);
+  STATE.meshes.cloud.position.set(-STATE.cloudx, STATE.cloudy, STATE.cloudz);
+  STATE.meshes.ocean.rotation.set(-Math.PI*0.5, 0, elapsedTime*0);
+  STATE.meshes.buildings.rotation.set(-Math.PI*0.5, 0, elapsedTime*0);
 
-  STATE.entities.light1.position.set(0, Math.sin(elapsedTime*3)*50-15, 30);
-  STATE.entities.light2.position.set(20, Math.sin(elapsedTime*3)*50-15, 10);
-  STATE.entities.light3.position.set(-20, Math.sin(elapsedTime*3)*50-15, 10);
-
-  STATE.meshes.astronaut.rotation.set(Math.PI*0.5, 0, elapsedTime);
-  STATE.meshes.astronaut.position.set( 0, 0, 10 );
-  STATE.meshes.astronaut.scale.set( 4, 4, 4 );
-
-  STATE.meshes.donuts.rotation.set(Math.PI*0.5, 0, -elapsedTime);
-  STATE.meshes.donuts.position.set( 0, 0, 40 );
-  STATE.meshes.donuts.scale.set( 4, 4, 4 );
-
-  STATE.meshes.planet.position.set(0, Math.sin(elapsedTime*0.5)*5, 0);
-  STATE.meshes.donuts.rotation.set(Math.PI*0.5, 0, -elapsedTime);
+  STATE.reflection.update( STATE.renderer, STATE.scene );
 
   ENTITIES.update(deltaTime);
   STATE.keyboard.update( deltaTime );
+  STATE.controls.update();
 }
 
 function render(deltaTime) {
@@ -188,18 +234,6 @@ function render(deltaTime) {
 // Events
 
 function onKeyDown(evt) {
-
-    if (evt.keyCode === 37) {
-      STATE.passes.renderPass.renderToScreen = true;
-      STATE.passes.assignmentPass.renderToScreen = false;
-    }
-
-    if (evt.keyCode === 39) {
-      STATE.passes.renderPass.renderToScreen = false;
-      STATE.passes.assignmentPass.renderToScreen = true;
-    }
-
-
     if (typeof STATE.keyboard.keys[evt.keyCode] === "undefined" || STATE.keyboard.keys[evt.keyCode] === 0)
         STATE.keyboard.keys[evt.keyCode] = 1;
 }
@@ -209,12 +243,9 @@ function onKeyUp(evt) {
 }
 
 function onWindowResize() {
-
 	STATE.camera.aspect = window.innerWidth / window.innerHeight;
 	STATE.camera.updateProjectionMatrix();
-
 	renderer.setSize( window.innerWidth, window.innerHeight );
-
 }
 
 STATE.loader.finishedLoading = postload;
